@@ -1,281 +1,162 @@
-# 🤖 Private Telegram Downloader Bot
-### بوت تحميل تيليجرام خاص وعالي الأداء (Node.js & TypeScript)
+# Rahami (رهامي) - Private Telegram Downloader Bot
 
-A production-ready, secure, and lightweight private Telegram bot designed to download media (videos, audio, and direct files) from supported URLs with strict **two-user access control**, live throttled progress bars, format selection, and PM2 process management.
-
----
-
-## 🌟 Key Features / المميزات الرئيسية
-
-* **Strict 2-User Access Control (حماية صارمة لشخصين فقط):**
-  Enforced globally at the middleware level and verified again at the service level (defense-in-depth). Unauthorized users cannot execute commands, trigger downloads, or interact with inline keyboard buttons.
-* **Modern Arabic Interface (واجهة عربية عصرية وسريعة):**
-  Clear, user-friendly messages, interactive inline buttons, and rich formatting.
-* **Multi-Source Support (دعم مصادر متعددة):**
-  - **yt-dlp Engine:** Supports video & audio platforms (YouTube, Twitter/X, Instagram, TikTok, Facebook, SoundCloud, Reddit, Vimeo, etc.).
-  - **Direct HTTP Streaming:** Downloads direct files (MP4, MP3, PDF, ZIP, MKV, etc.) with streaming pipelines.
-* **Format & Quality Selection (اختيار الجودة والصيغة):**
-  Inspects media and displays only genuine available resolutions (Best, 1080p, 720p, 480p, 360p, or Audio MP3).
-* **Smooth Progress Tracking (تتبع التقدم المباشر):**
-  Visual progress bar (`[▓▓▓▓▓▓░░░░] 60%`), real-time speed, downloaded size, and ETA, rate-limited to avoid Telegram 429 errors.
-* **Queue & Concurrency Management (إدارة الطابور والأمان):**
-  Enforces a limit of 1 active download per authorized user. Provides instant cancellation via `/cancel`.
-* **FFmpeg Processing (معالجة وتحويل الصوت والفيديو):**
-  High-quality MP3 audio extraction and streaming-compatible MP4 container remuxing.
-* **Production Ready (جاهز للإنتاج والاستضافة):**
-  Clean TypeScript architecture, structured redacting logger (`pino`), graceful shutdown, orphaned temp file cleanup on startup, and PM2 ecosystem configuration.
+بوت تيليجرام خاص وعالي الأداء لتحميل الوسائط والملفات من الروابط المدعومة (TikTok، Instagram، YouTube، وروابط التنزيل المباشرة)، مبرمج بالكامل بلغة **Python 3.12+**.
 
 ---
 
-## 📋 System Requirements / المتطلبات
+## 🌟 المميزات الرئيسية
 
-* **Operating System:** Linux (Ubuntu 20.04+, Debian 11+, CentOS, Alpine) or Windows 10/11 / Server.
-* **Node.js:** `v20.0.0` or higher (tested on Node `v24`).
-* **npm:** `v9.0.0` or higher.
-* **yt-dlp:** Latest release.
-* **FFmpeg:** `v4.4` or higher.
-* **PM2:** For production daemon process management (`npm install -g pm2`).
+- **نظام وصول صارم وحصري**: البوت مقيد برقمي معرّف (User IDs) مصرح لهما فقط. لا يمكن لأي مستخدم آخر تنفيذ أوامر، أو إرسال روابط، أو الضغط على أزرار التفاعل.
+- **تخطي حماية TikTok المتقدمة**: استخدام مكتبة `curl-cffi` مع انتحال متصفح Chrome (`--impersonate chrome`) لتجاوز فحوصات Slardar WAF وحل الروابط المختصرة (`vt.tiktok.com`).
+- **توافق كامل مع مشغل تيليجرام للهواتف**: التحقق من الترميز وتحويل الفيديوهات تلقائياً إلى صيغة **H.264 (yuv420p)** مع صوت **AAC** وتطبيق خاصية `+faststart` وتوليد صورة مصغرة (Thumbnail) لبدء التشغيل الفوري داخل التطبيق.
+- **دعم صور إنستغرام**: في حال كان رابط إنستغرام لصورة أو ألبوم صور بدون فيديو، يقوم البوت تلقائياً باستخراج الصورة الأصلية بأعلى دقة وتوفير خيار تنزيلها.
+- **لوحة تقدم تفاعلية سريعة ومحمية**: تحديث مباشر لنسبة التقدم وحجم الملف وسرعة التنزيل والوقت المتبقي مع ضبط معدل الإرسال (Rate Throttling) كل 2.5 ثانية لحماية البوت من حظر تيليجرام (Telegram 429).
+- **إدارة الطوابير والتزامن**:
+  - معالجة تحميلين متزامنين على مستوى البوت (`MAX_CONCURRENT_DOWNLOADS=2`).
+  - قفل تحميل واحد لكل مستخدم في نفس الوقت لمنع ازدحام السيرفر.
+  - إمكانية الإلغاء الفوري للتحميل الجاري عبر أمر `/cancel`.
+- **أمان متقدم**:
+  - حماية كاملة من ثغرات تزوير الطلبات بالخادم (SSRF) بحظر عناوين الشبكات الداخلية والمحلية وبيانات سحابية (Cloud Metadata).
+  - تنظيف ذاتي للملفات المؤقتة في مجلد `temp/` عند اكتمال التحميل أو فشله أو إلغائه أو إعادة تشغيل البوت.
 
 ---
 
-## 🛠️ Step-by-Step Installation (Linux VPS) / التثبيت على خادم لينكس
+## 📋 متطلبات التشغيل
 
-### 1. Update System Packages
+1. **Python 3.12+**
+2. **FFmpeg و FFprobe** (مضافين إلى مسار النظام `PATH`)
+3. **yt-dlp** (محدث لأحدث إصدار)
+
+---
+
+## 🚀 التثبيت والتشغيل المحلي (Local Setup)
+
+### 1. استنساخ المستودع وتثبيت المكتبات
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl git build-essential
+# إنشاء بيئة افتراضية (اختياري لكن يُنصح به)
+python -m venv venv
+
+# تفعيل البيئة (Linux/macOS)
+source venv/bin/activate
+
+# تفعيل البيئة (Windows PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# تثبيت الحزم المطلوبة
+pip install -r requirements.txt
 ```
 
-### 2. Install Node.js (v20+ LTS)
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v # Should display v20.x or higher
-npm -v
-```
-
-### 3. Install FFmpeg
-```bash
-sudo apt install -y ffmpeg
-ffmpeg -version
-```
-
-### 4. Install yt-dlp
-```bash
-# Download latest yt-dlp standalone binary
-sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-sudo chmod a+rx /usr/local/bin/yt-dlp
-yt-dlp --version
-```
-
-### 5. Clone and Install Dependencies
-```bash
-git clone <your-repository-url> boterhamy
-cd boterhamy
-
-# Install production and development dependencies
-npm install
-
-# Build TypeScript to JavaScript
-npm run build
-```
-
----
-
-## 🛠️ Installation on Windows / التثبيت على ويندوز
-
-1. Install **Node.js 20+** from [nodejs.org](https://nodejs.org/).
-2. Install **yt-dlp** via winget or Python pip:
-   ```cmd
-   winget install yt-dlp
-   # or: pip install yt-dlp
-   ```
-3. Install **FFmpeg** via winget:
-   ```cmd
-   winget install Gyan.FFmpeg
-   ```
-4. Install dependencies and build:
-   ```cmd
-   npm.cmd install
-   npm.cmd run build
-   ```
-
----
-
-## 🔑 How to Obtain Telegram User IDs / كيفية الحصول على معرّف تيليجرام
-
-To ensure only you and your partner can use the bot, obtain your numeric Telegram User IDs:
-
-1. Open Telegram and search for [@userinfobot](https://t.me/userinfobot) or [@raw_data_bot](https://t.me/raw_data_bot).
-2. Click **Start** (`/start`).
-3. The bot will reply with your numeric `Id` (e.g. `123456789`).
-4. Repeat this step for the second authorized user (e.g. `987654321`).
-
----
-
-## ⚙️ Configuration (.env) / إعداد متغيرات البيئة
-
-Copy the example environment file:
+### 2. ضبط الإعدادات (.env)
+انسخ ملف الإعدادات وقم بتعديله:
 ```bash
 cp .env.example .env
 ```
-
-Edit `.env` using your favorite editor (`nano .env`):
-
+محتوى ملف `.env`:
 ```env
-# =================================================================
-# Private Telegram Download Bot Configuration
-# =================================================================
-
-# Telegram Bot Token obtained from @BotFather
-BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-
-# Strict Allowlist: Exactly TWO comma-separated Telegram User IDs
-ALLOWED_USERS=123456789,987654321
-
-# Maximum file size in bytes (Default: 52428800 = 50 MB standard Bot API limit)
-MAX_FILE_SIZE=52428800
-
-# Download Timeout in milliseconds (Default: 900000 = 15 minutes)
-DOWNLOAD_TIMEOUT=900000
-
-# Directory for temporary files
-TEMP_DIRECTORY=./temp
-
-# Custom binary paths (leave empty to auto-detect from PATH)
-YTDLP_PATH=
-FFMPEG_PATH=
-
-# Logging level: info, debug, warn, error
-LOG_LEVEL=info
-
-# Node environment
-NODE_ENV=production
+BOT_TOKEN=1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ
+ALLOWED_USER_IDS=937470619,596354371
+MAX_FILE_SIZE_MB=50
+DOWNLOAD_TIMEOUT=900
+TEMP_DIR=./temp
+MAX_CONCURRENT_DOWNLOADS=2
+LOG_LEVEL=INFO
 ```
 
-> [!IMPORTANT]
-> **Telegram Bot API Size Limit**:
-> Standard Telegram bots have an upload ceiling of **50 MB** via official Telegram cloud servers.
-> If you wish to send files up to **2000 MB (2 GB)**, run a local [Telegram Bot API Server](https://core.telegram.org/bots/api#using-a-local-bot-api-server) and specify `TELEGRAM_API_ROOT=http://localhost:8081` in your `.env`, then increase `MAX_FILE_SIZE=2097152000`.
-
----
-
-## 🚀 Running the Bot / تشغيل البوت
-
-### Local Development / وضع التطوير
+### 3. تشغيل البوت
 ```bash
-# Runs TypeScript directly with live reloading
-npm run dev
-```
-
-### Running Unit Tests / تشغيل الاختبارات
-```bash
-npm test
-```
-
-### Production Deployment with PM2 / التشغيل في الإنتاج بواسطة PM2
-PM2 keeps your bot running 24/7, restarts it automatically if it crashes or the server reboots, and manages log files.
-
-```bash
-# 1. Install PM2 globally (if not already installed)
-sudo npm install -g pm2
-
-# 2. Build the TypeScript source code
-npm run build
-
-# 3. Start the bot via the ecosystem configuration
-pm2 start ecosystem.config.cjs
-
-# 4. Save PM2 state to resurrect on server reboot
-pm2 save
-pm2 startup
-```
-
-### Managing the PM2 Process
-```bash
-# Check status
-pm2 status
-
-# View live streaming logs
-pm2 logs telegram-downloader-bot
-
-# Restart the bot
-pm2 restart telegram-downloader-bot
-
-# Stop the bot
-pm2 stop telegram-downloader-bot
+python main.py
 ```
 
 ---
 
-## 💬 Bot Commands & Usage / أوامر البوت والاستخدام
+## 🐧 النشر على سيرفر لينكس (Ubuntu Server Production Deployment)
 
-| الأمر / Command | الوصف / Description |
+### الخطوة 1: تثبيت الحزم الأساسية و FFmpeg
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv ffmpeg git
+```
+
+### الخطوة 2: تثبيت المشروع وضبط الصلاحيات
+```bash
+# الانتقال إلى المجلد المخصص للتطبيقات
+cd /opt
+sudo git clone <REPO_URL> rahami
+cd /opt/rahami
+
+# إنشاء البيئة الافتراضية وتثبيت المتطلبات
+sudo python3 -m venv venv
+sudo ./venv/bin/pip install --upgrade pip
+sudo ./venv/bin/pip install -r requirements.txt
+
+# إنشاء ملف الإعدادات
+sudo cp .env.example .env
+sudo nano .env
+```
+
+### الخطوة 3: إعداد خدمة Systemd للتشغيل التلقائي والمستمر
+قم بإنشاء ملف الخدمة:
+```bash
+sudo nano /etc/systemd/system/rahami.service
+```
+
+ألصق الإعدادات التالية:
+```ini
+[Unit]
+Description=Rahami Telegram Downloader Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rahami
+ExecStart=/opt/rahami/venv/bin/python main.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/rahami/.env
+
+# حماية الموارد والحدود
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### الخطوة 4: تفعيل وتشغيل الخدمة
+```bash
+# إعادة تحميل خدمات systemd
+sudo systemctl daemon-reload
+
+# تفعيل الخدمة للعمل التلقائي عند إقلاع السيرفر
+sudo systemctl enable rahami
+
+# تشغيل الخدمة
+sudo systemctl start rahami
+
+# فحص حالة الخدمة
+sudo systemctl status rahami
+```
+
+### فحص السجلات المباشرة (Logs)
+```bash
+journalctl -u rahami -f
+```
+
+---
+
+## 🛠️ أوامر التحكم بالبوت
+
+| الأمر | الوظيفة |
 | :--- | :--- |
-| `/start` | عرض رسالة الترحيب وزر بدء إرسال الروابط |
-| `/help` | شرح مفصل عن كيفية الاستخدام والمنصات المدعومة |
-| `/status` | عرض تفاصيل التحميل الجاري (الملف، التقدم، السرعة، الوقت المتبقي) |
-| `/cancel` | إلغاء فوري للتحميل النشط وحذف الملفات المؤقتة وإيقاف العمليات |
-
-### Download Workflow:
-1. Send any supported link (e.g. YouTube, Instagram, X/Twitter, or direct `.mp4` / `.zip` file URL).
-2. The bot inspects and verifies the link, guarding against SSRF and private IP addresses.
-3. Available genuine formats are displayed as interactive buttons:
-   - `[ 🎬 أفضل جودة (Best Quality) ]`
-   - `[ 🎥 1080p ]`, `[ 🎥 720p ]`, `[ 📱 480p ]`
-   - `[ 🎵 صوت فقط MP3 ]`
-   - `[ ❌ إلغاء ]`
-4. Click your desired format.
-5. The bot streams progress updates and automatically delivers the file to your chat.
+| `/start` | عرض الترحيب وقائمة الأزرار التفاعلية الرئيسية |
+| `/status` | فحص حالة ونسبة التحميل الجاري للمستخدم |
+| `/cancel` | إلغاء فوري للتحميل الجاري للمستخدم وتنظيف ملفاته |
+| `/help` | عرض تعليمات الاستخدام والأوامر المدعومة |
 
 ---
 
-## 🔒 Security Architecture / المعايير الأمنية
-
-* **Zero Arbitrary Execution:** No `child_process.exec()` or `shell: true` calls. Arguments are passed as sanitized arrays directly to `spawn` / `execFile`.
-* **SSRF Protection:** All URLs are checked against private RFC1918 networks, loopback (`127.0.0.1`, `localhost`), link-local metadata endpoints (`169.254.169.254`), and IPv6 equivalents.
-* **Filename Sanitization:** Path traversal patterns (`../`, `..\\`), non-printable control characters, and reserved filesystem symbols are stripped before creating local files.
-* **Isolated Temporary Directories:** Each download is placed inside its own uniquely generated `temp/task_<id>` folder and guaranteed to be deleted in a `finally` block.
-* **Data Privacy:** Tokens, passwords, and sensitive URL query parameters are automatically redacted from logs.
-* **Strict Allowlist:** All updates from users not listed in `ALLOWED_USERS` are immediately dropped and audited.
-
----
-
-## 🔄 Updating the Bot / تحديث البوت
+## 🧪 تشغيل الاختبارات الآلية (Unit Tests)
 
 ```bash
-cd /path/to/boterhamy
-git pull
-npm install
-npm run build
-pm2 restart telegram-downloader-bot
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
-
-To update `yt-dlp` to the latest version:
-```bash
-sudo yt-dlp -U
-```
-
----
-
-## ❓ Troubleshooting / حل المشكلات الشائعة
-
-1. **Bot says: "هذا البوت خاص وأنت غير مصرح لك باستخدامه."**
-   - Check your Telegram ID using [@userinfobot](https://t.me/userinfobot).
-   - Ensure the ID is correctly set in `.env` under `ALLOWED_USERS` (e.g., `ALLOWED_USERS=123456789,987654321` with no spaces).
-   - Restart the bot with `pm2 restart telegram-downloader-bot`.
-
-2. **File too large error ("حجم هذا الملف يتجاوز الحد الأقصى"):**
-   - The standard Telegram Bot API has a 50MB limit. For larger files (up to 2GB), configure a local Telegram Bot API Server.
-
-3. **yt-dlp or FFmpeg not found on startup:**
-   - Verify yt-dlp is installed and in PATH: `yt-dlp --version`.
-   - Set the exact path in `.env` if necessary:
-     `YTDLP_PATH=/usr/local/bin/yt-dlp`
-     `FFMPEG_PATH=/usr/bin/ffmpeg`
-
----
-
-## 📄 License
-
-MIT License. Designed for private, high-performance personal use.
