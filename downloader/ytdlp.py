@@ -169,62 +169,171 @@ class YtDlpEngine:
 
     @classmethod
     def _parse_info_dict(cls, url: str, info: dict) -> MediaMetadata:
-        """Parse raw yt-dlp info dict into structured MediaMetadata."""
-        title = info.get("title") or "media_file"
-        duration = info.get("duration")
-        thumbnail = info.get("thumbnail")
-        webpage_url = info.get("webpage_url") or url
-        raw_formats = info.get("formats") or []
-        filesize = info.get("filesize") or info.get("filesize_approx")
+        """Defensively parse raw yt-dlp info dict into structured MediaMetadata."""
+        title = str(info.get("title") or "media_file")
+        duration: float | None = None
+        try:
+            raw_dur = info.get("duration")
+            if raw_dur is not None:
+                duration = float(raw_dur)
+        except (ValueError, TypeError):
+            pass
 
+        thumbnail = info.get("thumbnail")
+        raw_thumbs = info.get("thumbnails")
+        if not thumbnail and isinstance(raw_thumbs, list) and len(raw_thumbs) > 0:
+            last_thumb = raw_thumbs[-1]
+            if isinstance(last_thumb, dict):
+                thumbnail = last_thumb.get("url")
+
+        webpage_url = str(info.get("webpage_url") or url)
+
+        # Extract and sanitize raw formats list safely
+        raw_formats = info.get("formats")
+        if not isinstance(raw_formats, list):
+            if isinstance(info.get("url"), str) and info.get("url"):
+                raw_formats = [info]
+            else:
+                raw_formats = []
+
+        # Analyze available streams defensively
+        has_video = False
+        has_audio = False
+        separate_streams = False
+        available_heights: set[int] = set()
+
+        for f in raw_formats:
+            if not isinstance(f, dict):
+                continue
+            vcodec = str(f.get("vcodec") or "").lower()
+            acodec = str(f.get("acodec") or "").lower()
+            height = f.get("height")
+            ext = str(f.get("ext") or "").lower()
+
+            is_v = (vcodec not in ("none", "")) or (isinstance(height, (int, float)) and height > 0) or ext in ("mp4", "mkv", "webm", "mov", "flv")
+            is_a = (acodec not in ("none", "")) or ext in ("mp3", "m4a", "aac", "wav", "opus", "flac")
+
+            if is_v:
+                has_video = True
+                if isinstance(height, (int, float)) and height > 0:
+                    available_heights.add(int(height))
+            if is_a:
+                has_audio = True
+
+            if is_v and not is_a:
+                separate_streams = True
+
+        # Check top-level metadata if format list had minimal codec info
+        if not has_video:
+            top_v = str(info.get("vcodec") or "").lower()
+            if top_v and top_v != "none":
+                has_video = True
+            elif info.get("height") and isinstance(info.get("height"), (int, float)) and info.get("height") > 0:
+                has_video = True
+                available_heights.add(int(info.get("height")))
+            elif str(info.get("ext") or "").lower() in ("mp4", "mkv", "webm", "mov"):
+                has_video = True
+
+        if not has_audio:
+            top_a = str(info.get("acodec") or "").lower()
+            if top_a and top_a != "none":
+                has_audio = True
+            elif duration and duration > 0 and str(info.get("ext") or "").lower() not in ("jpg", "jpeg", "png", "webp", "gif"):
+                has_audio = True
+
+        filesize = info.get("filesize") or info.get("filesize_approx")
         formats: list[MediaFormat] = []
 
-        # 1. Best Quality (Always included)
-        formats.append(
-            MediaFormat(
-                id="best",
-                label="🎬 أفضل جودة (Best Quality)",
-                quality="أفضل جودة",
-                extension="mp4",
-                is_audio_only=False,
-                filesize=filesize,
-            )
-        )
-
-        # 2. Specific real resolutions found in formats
-        available_heights = set()
-        for f in raw_formats:
-            h = f.get("height")
-            if h and isinstance(h, int) and h in (1080, 720, 480, 360):
-                available_heights.add(h)
-
-        height_labels = {
-            1080: "🎥 جودة فائقة (1080p FHD)",
-            720: "📹 جودة عالية (720p HD)",
-            480: "📺 جودة متوسطة (480p SD)",
-            360: "📱 جودة خفيفة (360p)",
-        }
-
-        for h in sorted(available_heights, reverse=True):
+        # 1. Best Quality (for video sources)
+        if has_video:
             formats.append(
                 MediaFormat(
-                    id=f"res_{h}",
-                    label=height_labels.get(h, f"📹 دقة {h}p"),
-                    quality=f"{h}p",
+                    id="best",
+                    label="🎬 أفضل جودة (Best Quality)",
+                    quality="أفضل جودة",
                     extension="mp4",
                     is_audio_only=False,
+                    filesize=filesize,
                 )
             )
 
-        # 3. Audio Only MP3
-        formats.append(
-            MediaFormat(
-                id="audio_mp3",
-                label="🎵 صوت فقط MP3 (Audio Only)",
-                quality="صوت عالي الجودة",
-                extension="mp3",
-                is_audio_only=True,
+            # Specific real resolutions only if they actually exist in source formats
+            standard_tiers = [1080, 720, 480, 360]
+            matched_tiers: list[int] = []
+            for tier in standard_tiers:
+                if any(h == tier or abs(h - tier) <= 20 for h in available_heights):
+                    matched_tiers.append(tier)
+
+            # If no standard tier matched, use top distinct heights available
+            if not matched_tiers and available_heights:
+                matched_tiers = sorted(available_heights, reverse=True)[:3]
+
+            tier_labels = {
+                1080: "🎥 جودة فائقة (1080p FHD)",
+                720: "📹 جودة عالية (720p HD)",
+                480: "📺 جودة متوسطة (480p SD)",
+                360: "📱 جودة خفيفة (360p)",
+            }
+
+            for h in matched_tiers:
+                formats.append(
+                    MediaFormat(
+                        id=f"res_{h}",
+                        label=tier_labels.get(h, f"📹 دقة {h}p"),
+                        quality=f"{h}p",
+                        extension="mp4",
+                        is_audio_only=False,
+                    )
+                )
+
+        # 2. Audio Only MP3 (only when audio stream actually exists)
+        if has_audio:
+            formats.append(
+                MediaFormat(
+                    id="audio_mp3",
+                    label="🎵 صوت فقط MP3 (Audio Only)",
+                    quality="صوت MP3",
+                    extension="mp3",
+                    is_audio_only=True,
+                )
             )
+
+        # 3. Image / Photo format (when neither video nor audio)
+        if not has_video and not has_audio:
+            ext = str(info.get("ext") or "").lower()
+            if ext in ("jpg", "jpeg", "png", "webp") or "image" in str(info.get("extractor", "")).lower():
+                formats.append(
+                    MediaFormat(
+                        id="photo",
+                        label="🖼️ تحميل الصورة (Photo)",
+                        quality="أصلية",
+                        extension=ext or "jpg",
+                        is_audio_only=False,
+                        filesize=filesize,
+                    )
+                )
+
+        # 4. Fallback if no formats generated
+        if not formats:
+            formats.append(
+                MediaFormat(
+                    id="best",
+                    label="📁 تحميل الملف المتاح",
+                    quality="متاح",
+                    extension=str(info.get("ext") or "mp4"),
+                    is_audio_only=False,
+                    filesize=filesize,
+                )
+            )
+
+        logger.debug(
+            "Parsed %d formats from %d raw formats for '%s' (video=%s, audio=%s, separate=%s)",
+            len(formats),
+            len(raw_formats),
+            sanitize_log_url(webpage_url),
+            has_video,
+            has_audio,
+            separate_streams,
         )
 
         return MediaMetadata(
@@ -244,7 +353,8 @@ class YtDlpEngine:
             from yt_dlp.utils import traverse_obj
 
             try:
-                video_id = url.split("/p/")[1].split("/")[0] if "/p/" in url else url.split("/reel/")[1].split("/")[0]
+                m = re.search(r"/(?:p|reel)/([A-Za-z0-9_-]+)", url)
+                video_id = m.group(1) if m else "media"
                 ydl = yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True})
                 ie = ydl.get_info_extractor("Instagram")
                 webpage, _ = ie._download_webpage_handle(url, video_id)
@@ -260,7 +370,7 @@ class YtDlpEngine:
                         ...,
                         "__bbox",
                         "require",
-                        lambda _, v: v[0] == "RelayPrefetchedStreamCache",
+                        lambda _, v: isinstance(v, (list, tuple)) and len(v) > 0 and v[0] == "RelayPrefetchedStreamCache",
                         ...,
                         lambda _, v: v["__bbox"]["result"]["data"]["xig_polaris_media"],
                         "__bbox",
@@ -273,12 +383,13 @@ class YtDlpEngine:
                 )
                 product_info = traverse_obj(media, ("if_not_gated_logged_out", {dict})) or {}
                 candidates = product_info.get("image_versions2", {}).get("candidates", [])
-                img_url = candidates[0].get("url") if candidates else product_info.get("display_uri")
+                img_url = candidates[0].get("url") if candidates and len(candidates) > 0 and isinstance(candidates[0], dict) else product_info.get("display_uri")
                 if not img_url:
                     return None
 
                 caption = traverse_obj(product_info, ("caption", "text", {str})) or "Instagram Photo"
-                first_line = caption.strip().split("\n")[0][:80] or "Instagram Photo"
+                caption_lines = caption.strip().split("\n")
+                first_line = caption_lines[0][:80] if caption_lines and caption_lines[0] else "Instagram Photo"
 
                 return MediaMetadata(
                     url=img_url,
@@ -312,28 +423,28 @@ class YtDlpEngine:
         on_progress: Callable[[ProgressData], Coroutine[None, None, None]] | None = None,
         cancel_event: asyncio.Event | None = None,
     ) -> DownloadResult:
-        """Download media file using yt-dlp and monitor progress in real-time."""
+        """Download media file using yt-dlp with defensive format selectors and robust progress parsing."""
         if not Config.YTDLP_PATH:
             raise RuntimeError("YTDLP_NOT_FOUND")
 
-        is_audio = selected_format.is_audio_only
-        format_id = selected_format.id
+        is_audio = bool(selected_format.is_audio_only)
+        format_id = selected_format.id or "best"
 
+        # Defensive dynamic format selector
         if is_audio:
             format_arg = "bestaudio/best"
         elif format_id.startswith("res_"):
-            height = format_id.replace("res_", "")
+            height_str = format_id.replace("res_", "")
             format_arg = (
-                f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
-                f"bestvideo[height<={height}][vcodec^=avc]+bestaudio/"
-                f"bestvideo[height<={height}]+bestaudio/"
-                f"best[height<={height}]/best/b"
+                f"bestvideo*[height<={height_str}]+bestaudio/best[height<={height_str}]/best"
             )
+        elif format_id in ("photo", "photo_hd"):
+            format_arg = "best"
         else:
             format_arg = (
                 "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
                 "bestvideo[vcodec^=avc]+bestaudio/"
-                "best[vcodec^=avc]/bestvideo+bestaudio/best/b"
+                "bestvideo*+bestaudio/best"
             )
 
         output_template = str(temp_dir / "%(title).100B.%(ext)s")
@@ -343,9 +454,9 @@ class YtDlpEngine:
             "--impersonate",
             "chrome",
             "--extractor-retries",
-            "5",
+            "3",
             "-R",
-            "5",
+            "3",
             "--retry-sleep",
             "1",
             "--newline",
@@ -359,7 +470,7 @@ class YtDlpEngine:
 
         if is_audio:
             args.extend(["-x", "--audio-format", "mp3"])
-        else:
+        elif format_id not in ("photo", "photo_hd"):
             args.extend(["--merge-output-format", "mp4"])
 
         if Config.MAX_FILE_SIZE_BYTES > 0:
@@ -369,14 +480,39 @@ class YtDlpEngine:
             ffmpeg_dir = str(Path(Config.FFMPEG_PATH).parent)
             args.extend(["--ffmpeg-location", ffmpeg_dir])
 
-        args.append(url)
+        target_url = await cls.pre_resolve_url(url)
+        args.append(target_url)
+
+        # Structured debug logging (never log bot tokens or sensitive secrets)
+        safe_args = [sanitize_log_url(a) for a in args]
+        logger.info(
+            "Format selection debug:\n"
+            "  - Selected format ID: %s\n"
+            "  - Selected extension: %s\n"
+            "  - Selected resolution: %s\n"
+            "  - Selected format string (-f): %s\n"
+            "  - Is audio only: %s\n"
+            "  - Final yt-dlp args: %s",
+            selected_format.id,
+            selected_format.extension,
+            selected_format.quality,
+            format_arg,
+            is_audio,
+            " ".join(safe_args),
+        )
 
         is_tiktok = "tiktok.com" in url.lower()
         max_attempts = 3 if is_tiktok else 1
         downloaded_file: Path | None = None
 
         for attempt in range(max_attempts):
-            logger.debug("Launching yt-dlp download (attempt %d/%d): format=%s, dir=%s", attempt + 1, max_attempts, format_arg, temp_dir)
+            logger.debug(
+                "Launching yt-dlp download (attempt %d/%d): format=%s, dir=%s",
+                attempt + 1,
+                max_attempts,
+                format_arg,
+                temp_dir,
+            )
 
             process = await asyncio.create_subprocess_exec(
                 *args,
@@ -384,7 +520,7 @@ class YtDlpEngine:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stderr_output = []
+            stderr_output: list[str] = []
             assert process.stdout is not None
             assert process.stderr is not None
 
@@ -416,15 +552,25 @@ class YtDlpEngine:
                 if not line:
                     continue
 
-                # Detect destination file
-                if line.startswith("[download] Destination:") or line.startswith("[Merger] Merging formats into"):
-                    dest = line.split(":", 1)[1].strip().strip('"')
-                    downloaded_file = Path(dest)
-                elif line.endswith("has already been downloaded"):
-                    dest = line.replace("[download]", "").replace("has already been downloaded", "").strip().strip('"')
-                    downloaded_file = Path(dest)
+                # Defensive destination file detection - NEVER access index without checking length
+                if "[download] Destination:" in line:
+                    parts = line.split("[download] Destination:", 1)
+                    if len(parts) > 1:
+                        val = parts[1].strip().strip('"\'')
+                        if val:
+                            downloaded_file = Path(val)
+                elif "[Merger] Merging formats into" in line:
+                    parts = line.split("[Merger] Merging formats into", 1)
+                    if len(parts) > 1:
+                        val = parts[1].strip().strip('"\'')
+                        if val:
+                            downloaded_file = Path(val)
+                elif "has already been downloaded" in line:
+                    clean = line.replace("[download]", "").replace("has already been downloaded", "").strip().strip('"\'')
+                    if clean:
+                        downloaded_file = Path(clean)
 
-                # Parse progress
+                # Parse progress safely
                 match = progress_re.search(line)
                 if match and on_progress:
                     try:
@@ -449,7 +595,7 @@ class YtDlpEngine:
                             phase="downloading",
                         )
                         await on_progress(pdata)
-                    except Exception:
+                    except (ValueError, IndexError, KeyError):
                         pass
 
             returncode = await process.wait()
@@ -459,7 +605,13 @@ class YtDlpEngine:
                 break
 
             full_stderr = "".join(stderr_output)
-            logger.warning("yt-dlp download attempt %d/%d failed with code %d: %s", attempt + 1, max_attempts, returncode, full_stderr[:300])
+            logger.warning(
+                "yt-dlp download attempt %d/%d failed with code %d: %s",
+                attempt + 1,
+                max_attempts,
+                returncode,
+                full_stderr[:300],
+            )
 
             if "File is larger than max-filesize" in full_stderr:
                 raise ValueError("FILE_TOO_LARGE")
@@ -470,11 +622,14 @@ class YtDlpEngine:
 
             raise RuntimeError("DOWNLOAD_FAILED")
 
-        # Find the downloaded file in temp_dir if not explicitly matched
+        # Robust file discovery in temp_dir if not explicitly set
         if not downloaded_file or not downloaded_file.exists():
-            files = list(temp_dir.glob("*.*"))
-            if files:
-                downloaded_file = max(files, key=lambda f: f.stat().st_size)
+            candidates = [
+                f for f in temp_dir.glob("*.*")
+                if not f.name.endswith((".part", ".ytdl", ".temp", ".aria2"))
+            ]
+            if candidates:
+                downloaded_file = max(candidates, key=lambda f: f.stat().st_size)
             else:
                 raise FileNotFoundError("Downloaded file was not created.")
 
@@ -491,15 +646,21 @@ class YtDlpEngine:
             if on_progress:
                 await on_progress(ProgressData(percent=100.0, phase="processing"))
 
-            mobile_file, meta = await cls.ensure_mobile_compatibility(downloaded_file, temp_dir)
-            downloaded_file = mobile_file
-            width = meta.get("width")
-            height = meta.get("height")
-            duration = meta.get("duration")
+            try:
+                mobile_file, meta = await cls.ensure_mobile_compatibility(downloaded_file, temp_dir)
+                downloaded_file = mobile_file
+                width = meta.get("width")
+                height = meta.get("height")
+                duration = meta.get("duration")
+            except Exception as err:
+                logger.warning("Mobile compatibility transcoding failed, using original file: %s", err)
 
             # Generate thumbnail for instant mobile Telegram inline player
-            thumb_path = temp_dir / "thumb.jpg"
-            thumbnail_path = await cls.generate_thumbnail(downloaded_file, thumb_path)
+            try:
+                thumb_path = temp_dir / "thumb.jpg"
+                thumbnail_path = await cls.generate_thumbnail(downloaded_file, thumb_path)
+            except Exception as err:
+                logger.debug("Thumbnail generation failed: %s", err)
 
         final_stat = downloaded_file.stat()
 
@@ -612,7 +773,7 @@ class YtDlpEngine:
             out_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
             data = json.loads(out_bytes.decode("utf-8"))
             streams = data.get("streams", [])
-            if streams:
+            if isinstance(streams, list) and len(streams) > 0 and isinstance(streams[0], dict):
                 st = streams[0]
                 return {
                     "width": st.get("width"),
@@ -678,6 +839,6 @@ class YtDlpEngine:
                 return float(int(parts[0]) * 60 + int(parts[1]))
             if len(parts) == 3:
                 return float(int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2]))
-        except ValueError:
+        except (ValueError, IndexError):
             pass
         return 0.0

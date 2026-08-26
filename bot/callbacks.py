@@ -60,57 +60,79 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             pass
         return
 
-    # 3. Format Selection Download Button (dl:<token>:<owner_id>:<format_id>)
-    if action == "dl" and len(parts) >= 4:
-        token = parts[1]
-        owner_id = int(parts[2]) if parts[2].isdigit() else 0
-        format_id = parts[3]
+    try:
+        # 3. Format Selection Download Button (dl:<token>:<owner_id>:<format_id>)
+        if action == "dl":
+            if len(parts) < 4:
+                await query.answer("طلب غير صالح.", show_alert=True)
+                return
 
-        # Security check: verify button belongs to this user
-        if user_id != owner_id:
-            await query.answer("لا يمكنك استخدام هذا الزر لأن الرابط يخص مستخدماً آخر.", show_alert=True)
-            return
+            token = parts[1]
+            owner_id = int(parts[2]) if parts[2].isdigit() else 0
+            format_id = parts[3]
 
-        # Check if user already has an active download
-        if manager.has_active_download(user_id):
-            await query.answer(MESSAGES["ACTIVE_DOWNLOAD"], show_alert=True)
-            return
+            # Security check: verify button belongs to this user
+            if user_id != owner_id:
+                await query.answer("لا يمكنك استخدام هذا الزر لأن الرابط يخص مستخدماً آخر.", show_alert=True)
+                return
 
-        metadata = manager.get_cached_metadata(token)
-        if not metadata:
-            await query.answer("انتهت صلاحية هذا الرابط. يرجى إرسال الرابط من جديد.", show_alert=True)
+            # Check if user already has an active download
+            if manager.has_active_download(user_id):
+                await query.answer(MESSAGES["ACTIVE_DOWNLOAD"], show_alert=True)
+                return
+
+            metadata = manager.get_cached_metadata(token)
+            if not metadata:
+                await query.answer("انتهت صلاحية هذا الرابط. يرجى إرسال الرابط من جديد.", show_alert=True)
+                try:
+                    await query.edit_message_text("⚠️ انتهت صلاحية خيارات التحميل. أرسل الرابط مرة أخرى.")
+                except Exception:
+                    pass
+                return
+
+            selected_format = next((f for f in metadata.formats if f.id == format_id), None)
+            if not selected_format:
+                # Defensive fallback: if requested format is not found, fallback to first available format safely
+                if metadata.formats and len(metadata.formats) > 0:
+                    selected_format = metadata.formats[0]
+                    logger.warning(
+                        "Selected format '%s' not found for token %s. Safely falling back to '%s'",
+                        format_id,
+                        token,
+                        selected_format.id,
+                    )
+                else:
+                    await query.answer("الصيغة المختارة غير متوفرة.", show_alert=True)
+                    return
+
+            await query.answer("جاري بدء التحميل...")
+
+            # Delete or edit format menu to prevent duplicate clicks
             try:
-                await query.edit_message_text("⚠️ انتهت صلاحية خيارات التحميل. أرسل الرابط مرة أخرى.")
+                await query.delete_message()
             except Exception:
-                pass
-            return
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
 
-        selected_format = next((f for f in metadata.formats if f.id == format_id), None)
-        if not selected_format:
-            await query.answer("الصيغة المختارة غير متوفرة.", show_alert=True)
-            return
-
-        await query.answer("جاري بدء التحميل...")
-
-        # Delete or edit format menu to prevent duplicate clicks
-        try:
-            await query.delete_message()
-        except Exception:
-            try:
-                await query.edit_message_reply_markup(reply_markup=None)
-            except Exception:
-                pass
-
-        # Spawn download background task
-        asyncio.create_task(
-            manager.start_download(
-                bot=context.bot,
-                chat_id=chat_id,
-                user_id=user_id,
-                metadata=metadata,
-                selected_format=selected_format,
+            # Spawn download background task
+            asyncio.create_task(
+                manager.start_download(
+                    bot=context.bot,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    metadata=metadata,
+                    selected_format=selected_format,
+                )
             )
-        )
-        return
+            return
 
-    await query.answer()
+        await query.answer()
+
+    except Exception as err:
+        logger.error("Callback query processing failed: %s", err, exc_info=True)
+        try:
+            await query.answer(MESSAGES["DOWNLOAD_FAILED"], show_alert=True)
+        except Exception:
+            pass

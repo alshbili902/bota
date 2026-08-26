@@ -205,6 +205,7 @@ class DownloadManager:
 
         except asyncio.CancelledError:
             task.status = "cancelled"
+            logger.info("Task %s was cancelled by user %d", task.id, user_id)
             try:
                 await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=MESSAGES["CANCELLED"])
             except Exception:
@@ -213,13 +214,36 @@ class DownloadManager:
             task.status = "failed"
             error_key = str(err)
             reply = MESSAGES.get(error_key, MESSAGES["DOWNLOAD_FAILED"])
+            logger.warning("Download task %s failed with ValueError (%s): %s", task.id, error_key, err, exc_info=True)
             try:
                 await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=reply)
             except Exception:
                 pass
+        except (IndexError, KeyError) as err:
+            task.status = "failed"
+            logger.error("Data structure error in download task %s: %s", task.id, err, exc_info=True)
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=status_msg.message_id,
+                    text=MESSAGES["DOWNLOAD_FAILED"],
+                )
+            except Exception:
+                pass
+        except (FileNotFoundError, TimeoutError, asyncio.TimeoutError) as err:
+            task.status = "failed"
+            logger.error("File or timeout error in download task %s: %s", task.id, err, exc_info=True)
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=status_msg.message_id,
+                    text=MESSAGES["DOWNLOAD_FAILED"],
+                )
+            except Exception:
+                pass
         except Exception as err:
             task.status = "failed"
-            logger.error("Download task %s failed: %s", task.id, err)
+            logger.error("Unhandled exception in download task %s: %s", task.id, err, exc_info=True)
             try:
                 await bot.edit_message_text(
                     chat_id=chat_id,
@@ -237,6 +261,9 @@ class DownloadManager:
 
     async def _upload_media(self, bot: Bot, chat_id: int, result: DownloadResult, is_audio: bool) -> None:
         """Send downloaded media via appropriate Telegram method with dimensions and thumbnail."""
+        if not result.file_path or not result.file_path.exists() or result.filesize == 0:
+            raise FileNotFoundError(f"Downloaded media file not found or empty: {result.file_path}")
+
         caption = f"🎬 `{escape_markdown(result.filename)}`\n📦 *الحجم:* {format_bytes(result.filesize)}"
 
         with open(result.file_path, "rb") as media_file:
