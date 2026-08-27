@@ -2,9 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pytest_cache/
 
 # Environment variables
 .env
+.env.local
 
 # Virtual environments
 venv/
@@ -12,9 +14,24 @@ venv/
 env/
 ENV/
 
-# Temporary download files and logs
+# Application storage & database
+storage/
 temp/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
 *.log
+logs/
+
+# Frontend dependencies and builds
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+admin-dashboard/node_modules/
+admin-dashboard/dist/
+admin-dashboard/.vite/
 
 # Editor and OS files
 .vscode/

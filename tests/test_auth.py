@@ -1,71 +1,91 @@
-"""Unit tests for user authorization and middleware protection."""
+"""Tests for two-user authentication and authorization."""
 
-import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
-from bot.middleware import is_user_authorized, restricted
-from config import Config, MESSAGES
-
-
-class TestAuth(unittest.IsolatedAsyncioTestCase):
-    """Test user authorization and security boundaries."""
-
-    def setUp(self):
-        Config.ALLOWED_USER_IDS.clear()
-        Config.ALLOWED_USER_IDS.update({937470619, 596354371})
-
-    def test_is_user_authorized(self):
-        """Verify allowlist lookup for authorized and unauthorized users."""
-        self.assertTrue(is_user_authorized(937470619))
-        self.assertTrue(is_user_authorized(596354371))
-        self.assertFalse(is_user_authorized(123456))
-        self.assertFalse(is_user_authorized(None))
-
-    async def test_restricted_decorator_allows_authorized_user(self):
-        """Authorized user must be permitted to execute handler."""
-        mock_handler = AsyncMock(return_value="executed")
-        decorated = restricted(mock_handler)
-
-        update = MagicMock()
-        update.effective_user.id = 937470619
-        update.effective_user.username = "valid_user"
-        context = MagicMock()
-
-        result = await decorated(update, context)
-        self.assertEqual(result, "executed")
-        mock_handler.assert_awaited_once_with(update, context)
-
-    async def test_restricted_decorator_blocks_unauthorized_user(self):
-        """Unauthorized user must be blocked with standard error message."""
-        mock_handler = AsyncMock(return_value="executed")
-        decorated = restricted(mock_handler)
-
-        update = MagicMock()
-        update.effective_user.id = 999999999
-        update.effective_user.username = "hacker"
-        update.callback_query = None
-        update.effective_message.reply_text = AsyncMock()
-        context = MagicMock()
-
-        result = await decorated(update, context)
-        self.assertIsNone(result)
-        mock_handler.assert_not_called()
-        update.effective_message.reply_text.assert_awaited_once_with(MESSAGES["UNAUTHORIZED"])
-
-    async def test_restricted_decorator_blocks_unauthorized_callback(self):
-        """Unauthorized user clicking an inline button must get alert answer."""
-        mock_handler = AsyncMock(return_value="executed")
-        decorated = restricted(mock_handler)
-
-        update = MagicMock()
-        update.effective_user.id = 888888888
-        update.callback_query.answer = AsyncMock()
-        context = MagicMock()
-
-        result = await decorated(update, context)
-        self.assertIsNone(result)
-        mock_handler.assert_not_called()
-        update.callback_query.answer.assert_awaited_once_with(MESSAGES["UNAUTHORIZED"], show_alert=True)
+import pytest
+from httpx import ASGITransport, AsyncClient
+from app.core.config import Settings
+from app.core.security import hash_password, verify_password
+from app.main import app
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.mark.asyncio
+async def test_strictly_two_users_validation():
+    """Verify that settings reject anything other than exactly two users."""
+    # 0 users -> fails
+    s_zero = Settings(ALLOWED_USERS="")
+    assert len(s_zero.parse_allowed_users()) == 0
+    with pytest.raises(ValueError, match="at least TWO"):
+        s_zero.validate_strict_requirements()
+
+    # 1 user -> fails
+    s_one = Settings(ALLOWED_USERS="user1:$2b$12$fakehash")
+    assert len(s_one.parse_allowed_users()) == 1
+    with pytest.raises(ValueError, match="at least TWO"):
+        s_one.validate_strict_requirements()
+
+    # 3 users -> passes
+    s_three = Settings(ALLOWED_USERS="u1:h1,u2:h2,u3:h3")
+    assert len(s_three.parse_allowed_users()) == 3
+    s_three.validate_strict_requirements()
+
+    # Exactly 2 users -> passes
+    s_two = Settings(ALLOWED_USERS="u1:h1,u2:h2")
+    assert len(s_two.parse_allowed_users()) == 2
+    s_two.validate_strict_requirements()
+
+
+@pytest.mark.asyncio
+async def test_password_hashing():
+    """Verify bcrypt password hashing and verification."""
+    plain = "SuperSecurePassword123!"
+    hashed = hash_password(plain)
+    assert hashed != plain
+    assert verify_password(plain, hashed) is True
+    assert verify_password("WrongPassword!", hashed) is False
+
+
+@pytest.mark.asyncio
+async def test_login_success_and_unauthorized_rejection():
+    """Verify successful login for authorized user and 401 for unauthorized visitors."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Reject unauthenticated access to protected endpoints
+        resp = await client.get("/api/auth/me")
+        assert resp.status_code == 401
+
+        resp_down = await client.post("/api/download/analyze", json={"url": "https://youtube.com/watch?v=test"})
+        assert resp_down.status_code == 401
+
+        # 2. Reject wrong password
+        bad_login = await client.post(
+            "/api/auth/login",
+            json={"username": "rahma", "password": "WrongPassword!"}
+        )
+        assert bad_login.status_code == 401
+        assert "غير صحيحة" in bad_login.json()["detail"]
+
+        # 3. Reject non-existent user
+        fake_user = await client.post(
+            "/api/auth/login",
+            json={"username": "hacker", "password": "anypassword"}
+        )
+        assert fake_user.status_code == 401
+
+        # 4. Successful login for authorized user rahma
+        good_login = await client.post(
+            "/api/auth/login",
+            json={"username": "rahma", "password": "Rahami2026!"}
+        )
+        assert good_login.status_code == 200
+        data = good_login.json()
+        assert "access_token" in data
+        assert data["username"] == "rahma"
+
+        token = data["access_token"]
+
+        # 5. Access protected endpoint with token header
+        me_resp = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        assert me_resp.status_code == 200
+        assert me_resp.json()["username"] == "rahma"

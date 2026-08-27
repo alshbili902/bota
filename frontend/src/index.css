@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: rgba(209, 129, 115, 0.15);
+  }
+}
+
+/* Luxury Glassmorphism and Custom Scrollbars */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(209, 129, 115, 0.18);
+}
+
+.dark .glass-panel {
+  background: rgba(25, 22, 31, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(209, 129, 115, 0.12);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(209, 129, 115, 0.25);
+  transition: all 0.25s ease;
+}
+
+.glass-input:focus {
+  border-color: #D18173;
+  box-shadow: 0 0 0 4px rgba(209, 129, 115, 0.15);
+}
+
+.dark .glass-input {
+  background: rgba(30, 27, 36, 0.85);
+  border: 1.5px solid rgba(209, 129, 115, 0.2);
+}
+
+.dark .glass-input:focus {
+  border-color: #DEA398;
+  box-shadow: 0 0 0 4px rgba(222, 163, 152, 0.18);
+}
+
+/* Refined Gradient Badges & Buttons */
+.gradient-brand {
+  background: linear-gradient(135deg, #DEA398 0%, #D18173 50%, #B86153 100%);
+}
+
+.gradient-brand:hover {
+  background: linear-gradient(135deg, #EBC4BD 0%, #DEA398 50%, #D18173 100%);
+}
+
+/* Custom Thin Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(209, 129, 115, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(209, 129, 115, 0.5);
+}

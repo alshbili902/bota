@@ -1,0 +1,21 @@
+[Unit]
+Description=Rahami — رهامي Private Media Downloader
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/rahami
+EnvironmentFile=/opt/rahami/.env
+ExecStart=/opt/rahami/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5001 --workers 2 --proxy-headers
+Restart=always
+RestartSec=5s
+KillMode=process
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

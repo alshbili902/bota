@@ -1,162 +1,137 @@
-# Rahami (رهامي) - Private Telegram Downloader Bot
+# Rahami — رهامي
+### منصة التحميل الشخصية الخاصة (Private Personal Media Downloader)
 
-بوت تيليجرام خاص وعالي الأداء لتحميل الوسائط والملفات من الروابط المدعومة (TikTok، Instagram، YouTube، وروابط التنزيل المباشرة)، مبرمج بالكامل بلغة **Python 3.12+**.
+تطبيق ويب حديث، فائق السرعة، ومصمم خصيصًا ليكون مساحة تحميل شخصية راقية وخاصة ومحمية بالكامل ومحصورة **بمستخدمين اثنين فقط**.
 
 ---
 
 ## 🌟 المميزات الرئيسية
 
-- **نظام وصول صارم وحصري**: البوت مقيد برقمي معرّف (User IDs) مصرح لهما فقط. لا يمكن لأي مستخدم آخر تنفيذ أوامر، أو إرسال روابط، أو الضغط على أزرار التفاعل.
-- **تخطي حماية TikTok المتقدمة**: استخدام مكتبة `curl-cffi` مع انتحال متصفح Chrome (`--impersonate chrome`) لتجاوز فحوصات Slardar WAF وحل الروابط المختصرة (`vt.tiktok.com`).
-- **توافق كامل مع مشغل تيليجرام للهواتف**: التحقق من الترميز وتحويل الفيديوهات تلقائياً إلى صيغة **H.264 (yuv420p)** مع صوت **AAC** وتطبيق خاصية `+faststart` وتوليد صورة مصغرة (Thumbnail) لبدء التشغيل الفوري داخل التطبيق.
-- **دعم صور إنستغرام**: في حال كان رابط إنستغرام لصورة أو ألبوم صور بدون فيديو، يقوم البوت تلقائياً باستخراج الصورة الأصلية بأعلى دقة وتوفير خيار تنزيلها.
-- **لوحة تقدم تفاعلية سريعة ومحمية**: تحديث مباشر لنسبة التقدم وحجم الملف وسرعة التنزيل والوقت المتبقي مع ضبط معدل الإرسال (Rate Throttling) كل 2.5 ثانية لحماية البوت من حظر تيليجرام (Telegram 429).
-- **إدارة الطوابير والتزامن**:
-  - معالجة تحميلين متزامنين على مستوى البوت (`MAX_CONCURRENT_DOWNLOADS=2`).
-  - قفل تحميل واحد لكل مستخدم في نفس الوقت لمنع ازدحام السيرفر.
-  - إمكانية الإلغاء الفوري للتحميل الجاري عبر أمر `/cancel`.
-- **أمان متقدم**:
-  - حماية كاملة من ثغرات تزوير الطلبات بالخادم (SSRF) بحظر عناوين الشبكات الداخلية والمحلية وبيانات سحابية (Cloud Metadata).
-  - تنظيف ذاتي للملفات المؤقتة في مجلد `temp/` عند اكتمال التحميل أو فشله أو إلغائه أو إعادة تشغيل البوت.
+- **وصول خاص وحصري (Strict 2-User Access)**:
+  - المنصة مغلقة بالكامل ولا تحتوي على أي تسجيل عام أو إنشاء حسابات.
+  - مصممة بدقة لتعمل فقط لحسابين مصرح لهما ومحددين مسبقًا عبر تشفير Bcrypt غير القابل للاختراق.
+  - حماية مدمجة ضد هجمات التخمين (Brute-Force) مع قفل مؤقت للطلبات الخاطئة.
+- **محرك تحميل قوي وآمن (Powered by yt-dlp & FFmpeg)**:
+  - دعم أشهر منصات الفيديو والتواصل: YouTube, TikTok, Instagram, X (Twitter), Pinterest, SoundCloud, والروابط المباشرة.
+  - تنفيذ آمن خالي من استدعاءات `shell=True` مع عزل لكل عملية تحميل في مجلد مستقل.
+- **متابعة فورية حيّة (Real-time WebSocket Progress)**:
+  - عرض نسبة الإنجاز المئوية (%)، سرعة التحميل (MB/s)، الوقت المتبقي المقدر (ETA)، وحجم البيانات المحملة لحظة بلحظة.
+- **فحص ذكي للصيغ والجودات (Smart Format Extraction)**:
+  - استخراج الجودات الحقيقية المتوفرة فعليًا (1080p, 720p, 480p, 360p) أو استخراج الصوت النقي (MP3 / M4A).
+- **إدارة التخزين والتنظيف الذاتي (Auto-Cleanup & Diagnostics)**:
+  - فحص مستمر للقرص والذاكرة والأدوات التنفيذية (`/api/health`).
+  - تنظيف دوري آلي للمجلدات المؤقتة والملفات القديمة لضمان عدم تجاوز السعة المحددة (`MAX_STORAGE_GB`).
+- **واجهة مستخدم أنثوية فاخرة (Refined Luxury Aesthetic)**:
+  - تصميم عربي أنيق (RTL)، يدعم الوضعين المظلم والفاتح (Dark / Light Mode).
+  - تجربة متكاملة للهواتف المحمولة وأجهزة سطح المكتب، مع دعم زر اللصق المباشر من الحافظة.
 
 ---
 
-## 📋 متطلبات التشغيل
+## 🛠️ البنية التقنية
 
-1. **Python 3.12+**
-2. **FFmpeg و FFprobe** (مضافين إلى مسار النظام `PATH`)
-3. **yt-dlp** (محدث لأحدث إصدار)
+- **الخلفية (Backend)**: Python 3.12+ / 3.14, FastAPI, Uvicorn, yt-dlp, FFmpeg, aiosqlite, slowapi, PyJWT, Bcrypt.
+- **الواجهة (Frontend)**: React 19, TypeScript, Tailwind CSS, Vite, Lucide Icons.
+- **التخزين وقاعدة البيانات**: SQLite عبر `aiosqlite` للعزل والأمان وخفة الأداء.
+- **النشر على الخوادم (Production)**: Ubuntu Linux, Systemd Service, Nginx Reverse Proxy مع SSL.
 
 ---
 
-## 🚀 التثبيت والتشغيل المحلي (Local Setup)
+## 🚀 التثبيت والتشغيل المحلي (Local Development)
 
-### 1. استنساخ المستودع وتثبيت المكتبات
+### 1. المتطلبات الأساسية
+- Python 3.12 أو أحدث
+- Node.js 18+ و npm
+- تثبيت `yt-dlp` و `ffmpeg` في مسار النظام (PATH)
+
+### 2. إعداد الخادم الخلفي (Backend)
 ```bash
-# إنشاء بيئة افتراضية (اختياري لكن يُنصح به)
-python -m venv venv
-
-# تفعيل البيئة (Linux/macOS)
-source venv/bin/activate
-
-# تفعيل البيئة (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-
 # تثبيت الحزم المطلوبة
 pip install -r requirements.txt
-```
 
-### 2. ضبط الإعدادات (.env)
-انسخ ملف الإعدادات وقم بتعديله:
-```bash
+# إنشاء نسخة من ملف الإعدادات
 cp .env.example .env
 ```
-محتوى ملف `.env`:
+
+### 3. توليد كلمات المرور للمستخدمين الاثنين
+استخدم الأداة المساعدة المرفقة لتوليد هاش آمن لكل مستخدم:
+```bash
+python -m app.cli.hash_password "كلمة_المرور_الأولى"
+python -m app.cli.hash_password "كلمة_المرور_الثانية"
+```
+ثم ضع الناتج في ملف `.env`:
 ```env
-BOT_TOKEN=1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ
-ALLOWED_USER_IDS=937470619,596354371
-MAX_FILE_SIZE_MB=50
-DOWNLOAD_TIMEOUT=900
-TEMP_DIR=./temp
-MAX_CONCURRENT_DOWNLOADS=2
-LOG_LEVEL=INFO
+ALLOWED_USERS=user1:$2b$12$...,user2:$2b$12$...
 ```
 
-### 3. تشغيل البوت
+### 4. تشغيل الخادم
 ```bash
-python main.py
+uvicorn app.main:app --host 127.0.0.1 --port 5001 --reload
 ```
+
+### 5. تشغيل الواجهة الأمامية (Frontend Dev)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+أو لبناء النسخة الإنتاجية المدمجة:
+```bash
+cd frontend
+npm run build
+```
+عند بناء الواجهة، يقوم خادم FastAPI تلقائيًا بتقديمها على نفس المنفذ `5001`.
 
 ---
 
-## 🐧 النشر على سيرفر لينكس (Ubuntu Server Production Deployment)
+## 🌐 النشر على خادم الإنتاج (Ubuntu Deployment)
 
-### الخطوة 1: تثبيت الحزم الأساسية و FFmpeg
+### 1. استنساخ المشروع وتجهيز البيئة
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3 python3-pip python3-venv ffmpeg git
-```
-
-### الخطوة 2: تثبيت المشروع وضبط الصلاحيات
-```bash
-# الانتقال إلى المجلد المخصص للتطبيقات
 cd /opt
-sudo git clone <REPO_URL> rahami
+git clone <repository-url> rahami
 cd /opt/rahami
 
-# إنشاء البيئة الافتراضية وتثبيت المتطلبات
-sudo python3 -m venv venv
-sudo ./venv/bin/pip install --upgrade pip
-sudo ./venv/bin/pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-# إنشاء ملف الإعدادات
-sudo cp .env.example .env
-sudo nano .env
+# بناء الواجهة الأمامية
+cd frontend
+npm install
+npm run build
+cd ..
 ```
 
-### الخطوة 3: إعداد خدمة Systemd للتشغيل التلقائي والمستمر
-قم بإنشاء ملف الخدمة:
+### 2. ضبط الصلاحيات والمجلدات
 ```bash
-sudo nano /etc/systemd/system/rahami.service
+sudo chown -R www-data:www-data /opt/rahami
+sudo chmod -R 750 /opt/rahami/storage
 ```
 
-ألصق الإعدادات التالية:
-```ini
-[Unit]
-Description=Rahami Telegram Downloader Bot
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/rahami
-ExecStart=/opt/rahami/venv/bin/python main.py
-Restart=always
-RestartSec=5
-EnvironmentFile=/opt/rahami/.env
-
-# حماية الموارد والحدود
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### الخطوة 4: تفعيل وتشغيل الخدمة
+### 3. تفعيل خدمة Systemd
 ```bash
-# إعادة تحميل خدمات systemd
+sudo cp deploy/rahami.service /etc/systemd/system/
 sudo systemctl daemon-reload
-
-# تفعيل الخدمة للعمل التلقائي عند إقلاع السيرفر
-sudo systemctl enable rahami
-
-# تشغيل الخدمة
-sudo systemctl start rahami
-
-# فحص حالة الخدمة
+sudo systemctl enable --now rahami
 sudo systemctl status rahami
 ```
 
-### فحص السجلات المباشرة (Logs)
+### 4. إعداد Nginx وشهادة SSL المجانية (Certbot)
 ```bash
-journalctl -u rahami -f
+sudo cp deploy/rahami.conf /etc/nginx/sites-available/rahami.conf
+sudo ln -s /etc/nginx/sites-available/rahami.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+
+# استخراج شهادة SSL
+sudo certbot --nginx -d rahami.yourdomain.com
 ```
 
 ---
 
-## 🛠️ أوامر التحكم بالبوت
+## 🔒 الأمان والخصوصية (Security & Privacy)
 
-| الأمر | الوظيفة |
-| :--- | :--- |
-| `/start` | عرض الترحيب وقائمة الأزرار التفاعلية الرئيسية |
-| `/status` | فحص حالة ونسبة التحميل الجاري للمستخدم |
-| `/cancel` | إلغاء فوري للتحميل الجاري للمستخدم وتنظيف ملفاته |
-| `/help` | عرض تعليمات الاستخدام والأوامر المدعومة |
-
----
-
-## 🧪 تشغيل الاختبارات الآلية (Unit Tests)
-
-```bash
-python -m unittest discover -s tests -p "test_*.py" -v
-```
+- كل مهمة تحميل معزولة تمامًا عن المستخدم الآخر ولا يمكن لأي مستخدم الاطلاع على سجلات أو ملفات المستخدم الآخر.
+- مسارات الملفات مؤمنة بالكامل ضد هجمات مسار المجلدات (Path Traversal Prevention).
+- الجلسات مؤمنة بملفات تعريف ارتباط محمية (`HttpOnly`, `SameSite=Lax`, `Secure`).
+- حظر تلقائي مؤقت عند تكرار محاولات تسجيل الدخول الفاشلة.

@@ -1,58 +1,43 @@
-"""Unit tests for URL validation and SSRF protection."""
+"""Tests for URL validation, SSRF prevention, and source detection."""
 
-import unittest
-from utils.urls import clean_tracking_url, extract_urls, is_safe_url, is_valid_url
-
-
-class TestUrls(unittest.TestCase):
-    """Test URL parsing, sanitization, and SSRF prevention."""
-
-    def test_valid_urls(self):
-        """Standard valid HTTP/HTTPS URLs."""
-        self.assertTrue(is_valid_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"))
-        self.assertTrue(is_valid_url("http://example.com/video.mp4"))
-        self.assertTrue(is_valid_url("https://vt.tiktok.com/ZSVqQPVuM/"))
-
-    def test_invalid_urls(self):
-        """Invalid schemas and malformed URLs."""
-        self.assertFalse(is_valid_url(""))
-        self.assertFalse(is_valid_url("not_a_url"))
-        self.assertFalse(is_valid_url("ftp://example.com/file.zip"))
-        self.assertFalse(is_valid_url("file:///etc/passwd"))
-        self.assertFalse(is_valid_url("javascript:alert(1)"))
-
-    def test_ssrf_blocks_private_ips(self):
-        """SSRF protection must block loopback, local LAN and metadata endpoints."""
-        self.assertFalse(is_safe_url("http://127.0.0.1/admin"))
-        self.assertFalse(is_safe_url("http://localhost:8080/"))
-        self.assertFalse(is_safe_url("http://10.0.0.5/api"))
-        self.assertFalse(is_safe_url("http://192.168.1.1/"))
-        self.assertFalse(is_safe_url("http://172.16.0.1/"))
-        self.assertFalse(is_safe_url("http://169.254.169.254/latest/meta-data/"))
-        self.assertFalse(is_safe_url("http://[::1]/"))
-
-    def test_ssrf_permits_public_urls(self):
-        """Public web services must be allowed."""
-        self.assertTrue(is_safe_url("https://www.youtube.com/watch?v=test"))
-        self.assertTrue(is_safe_url("https://www.instagram.com/reel/test/"))
-        self.assertTrue(is_safe_url("https://vt.tiktok.com/test/"))
-
-    def test_clean_tracking_url(self):
-        """Tracking queries should be removed for video links."""
-        tt_url = "https://www.tiktok.com/@user/video/123456789?_r=1&_t=ZS-99"
-        self.assertEqual(clean_tracking_url(tt_url), "https://www.tiktok.com/@user/video/123456789")
-
-        ig_url = "https://www.instagram.com/p/Db3KqPst4mp/?igsh=MW44eWF0ejhhcmYyMQ=="
-        self.assertEqual(clean_tracking_url(ig_url), "https://www.instagram.com/p/Db3KqPst4mp/")
-
-    def test_extract_urls(self):
-        """Finds valid URLs within text messages."""
-        text = "Hello check this video https://vt.tiktok.com/ZSVqQPVuM/ and this https://example.com/file.mp4"
-        urls = extract_urls(text)
-        self.assertEqual(len(urls), 2)
-        self.assertEqual(urls[0], "https://vt.tiktok.com/ZSVqQPVuM/")
-        self.assertEqual(urls[1], "https://example.com/file.mp4")
+import pytest
+from app.services.analyzer import detect_source, format_duration, is_safe_url
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_url_safety_ssrf():
+    """Verify SSRF protection rejects localhost, local IPs, and private subnets."""
+    assert is_safe_url("http://localhost") is False
+    assert is_safe_url("http://127.0.0.1:8000") is False
+    assert is_safe_url("http://0.0.0.0") is False
+    assert is_safe_url("http://192.168.1.1/admin") is False
+    assert is_safe_url("http://10.0.0.1") is False
+    assert is_safe_url("http://169.254.169.254/latest/meta-data") is False
+    assert is_safe_url("ftp://example.com/file") is False
+    assert is_safe_url("file:///etc/passwd") is False
+
+    # Valid public URLs
+    assert is_safe_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ") is True
+    assert is_safe_url("https://www.tiktok.com/@user/video/123456789") is True
+    assert is_safe_url("https://instagram.com/reel/Cx12345") is True
+    assert is_safe_url("https://x.com/user/status/123456") is True
+
+
+def test_source_detection():
+    """Verify source platform categorization."""
+    assert detect_source("https://www.youtube.com/watch?v=123") == "YouTube"
+    assert detect_source("https://youtu.be/123") == "YouTube"
+    assert detect_source("https://www.tiktok.com/@test/video/123") == "TikTok"
+    assert detect_source("https://www.instagram.com/reel/123") == "Instagram"
+    assert detect_source("https://x.com/someone/status/123") == "X (Twitter)"
+    assert detect_source("https://twitter.com/someone/status/123") == "X (Twitter)"
+    assert detect_source("https://www.pinterest.com/pin/123") == "Pinterest"
+    assert detect_source("https://example.com/video.mp4") == "Direct / Web"
+
+
+def test_format_duration():
+    """Verify duration formatting."""
+    assert format_duration(None) is None
+    assert format_duration(0) is None
+    assert format_duration(45) == "00:45"
+    assert format_duration(125) == "02:05"
+    assert format_duration(3665) == "01:01:05"

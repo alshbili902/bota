@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-tajawal: 'Tajawal', 'Cairo', sans-serif;
+  }
+
+  body {
+    direction: rtl;
+    text-align: right;
+    font-family: var(--font-tajawal);
+    background-color: #F8FAFC;
+    color: #0F172A;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dark body {
+    background-color: #0B0F17;
+    color: #F3F4F6;
+  }
+
+  /* Custom luxury scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(226, 232, 240, 0.6);
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.6);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.4);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.7);
+  }
+}
+
+/* Glassmorphic card styling */
+.admin-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 25px -4px rgba(0, 0, 0, 0.05);
+}
+
+.dark .admin-card {
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 25px -4px rgba(0, 0, 0, 0.35);
+}
+
+/* Inner block */
+.admin-box {
+  background: rgba(241, 245, 249, 0.85);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.dark .admin-box {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Inputs */
+.admin-input {
+  background-color: #FFFFFF;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.dark .admin-input {
+  background-color: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+}
+
+/* Subtle pulse animation */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

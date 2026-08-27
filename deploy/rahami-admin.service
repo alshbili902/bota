@@ -1,0 +1,18 @@
+[Unit]
+Description=Rahami Admin Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/rahami
+Environment="PATH=/var/www/rahami/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/var/www/rahami/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5002 --workers 2 --timeout-keep-alive 60
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
